@@ -3,12 +3,14 @@ import subprocess
 import os
 from tempfile import NamedTemporaryFile
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, 
+    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog,
     QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox
 )
 from PyQt5.QtGui import QPixmap, QIntValidator, QIcon
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTranslator, QLibraryInfo, QLocale
 from fpdf import FPDF
+
+os.environ["LANG"] = "de_DE.UTF-8"
 
 class DraggableLabel(QLabel):
     def __init__(self, parent, file_path, main_window):
@@ -20,6 +22,9 @@ class DraggableLabel(QLabel):
 class ImageUploader(QWidget):
     def __init__(self):
         super().__init__()
+        translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+        translator.load("qtwidgets_de", translations_path)
+        self.setLocale(QLocale(QLocale.German, QLocale.Germany))
         self.initUI()
         self.setWindowTitle("PDF Creator")
         self.images = []
@@ -135,7 +140,8 @@ class ImageUploader(QWidget):
 
     def openFileDialog(self):
         options = QFileDialog.Options()
-        files, _ = QFileDialog.getOpenFileNames(
+        dialog = QFileDialog()
+        files, _ = dialog.getOpenFileNames(
             self, 
             "Bilder auswählen", 
             "", 
@@ -372,8 +378,12 @@ class ImageUploader(QWidget):
                     print(f"Temporäre Datei konnte nicht gelöscht werden: {temp_path}. Fehler: {e}")
             self.temp_files.clear()
 
-if __name__ == '__main__':
+if __name__ == '__main__':    
     app = QApplication(sys.argv)
+    translator = QTranslator()
+    translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+    translator.load("qtwidgets_de", translations_path)
+    app.installTranslator(translator)
     app.setWindowIcon(QIcon("icon.png"))
     ex = ImageUploader()
     ex.show()
