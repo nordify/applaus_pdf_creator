@@ -1,7 +1,9 @@
 #!/bin/zsh
 CERT_ID="Developer ID Application: Nordify UG (haftungsbeschrankt) (JG7CFYYV5B)"
 sudo rm -rf *.dmg
+sudo rm -f *.zip
 rm -f .DS_Store
+python -m pip install -r requirements.txt
 python setup.py py2app
 codesign --force --deep --verbose --timestamp --entitlements entitlements.plist --sign "$CERT_ID" "dist/PDF Creator.app"
 find "dist/PDF Creator.app/Contents/Resources/lib/python3.9/PyQt5/Qt5" -name "*.dylib" -exec codesign --force --timestamp --options runtime --entitlements entitlements.plist --verbose -s "$CERT_ID" {} \;
@@ -20,9 +22,7 @@ echo "read 'icns' (-16455) \"icon.icns\";" > icon.rsrc
 Rez -append icon.rsrc -o "PDF Creator.dmg"
 SetFile -a C "PDF Creator.dmg"
 rm icon.rsrc
-
 codesign --force --deep --verbose --timestamp --entitlements entitlements.plist --sign "$CERT_ID" "PDF Creator.dmg"
-zip "PDFCreator.zip" "PDF Creator.dmg"
 echo "Build done."
 
 # if [ -z "$APP_SPECIFIC_PASSWORD" ]; then

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-import subprocess
 from setuptools import setup
 
 APP = ['pdf_creator.py']
-DATA_FILES = ['icon.png']
+DATA_FILES = [('img', ['icon.png'])]
 OPTIONS = {
     'argv_emulation': False,
     'iconfile': 'icon.icns',

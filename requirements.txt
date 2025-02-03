@@ -1,0 +1,4 @@
+setuptools
+py2app
+PyQt5
+fpdf
