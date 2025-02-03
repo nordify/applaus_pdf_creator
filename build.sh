@@ -8,7 +8,6 @@ find "dist/PDF Creator.app/Contents/Resources/lib/python3.9/PyQt5/Qt5" -name "*.
 
 create-dmg \
   --volname "PDF Creator" \
-  --volicon icon.icns \
   --window-size 600 450 \
   --background "background.png" \
   --icon-size 100 \
@@ -16,6 +15,11 @@ create-dmg \
   --app-drop-link 480 200 \
   "PDF Creator.dmg" \
   "dist/PDF Creator.app"
+
+echo "read 'icns' (-16455) \"icon.icns\";" > icon.rsrc
+Rez -append icon.rsrc -o "PDF Creator.dmg"
+SetFile -a C "PDF Creator.dmg"
+rm icon.rsrc
 
 codesign --force --deep --verbose --timestamp --entitlements entitlements.plist --sign "$CERT_ID" "PDF Creator.dmg"
 zip "PDFCreator.zip" "PDF Creator.dmg"
