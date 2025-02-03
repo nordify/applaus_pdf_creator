@@ -5,7 +5,7 @@ from setuptools import setup
 APP = ['pdf_creator.py']
 DATA_FILES = ['icon.png']
 OPTIONS = {
-    'argv_emulation': True,
+    'argv_emulation': False,
     'iconfile': 'icon.icns',
     'plist': {
         'CFBundleName': "PDF Creator",
