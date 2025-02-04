@@ -456,7 +456,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     translator = QTranslator()
     translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
-    translator.load("qtwidgets_de", translations_path)
+    translator.load("qtbase_de", translations_path)
     app.installTranslator(translator)
     app.setWindowIcon(QIcon("resources/icon.png"))
     ex = ImageUploader()
