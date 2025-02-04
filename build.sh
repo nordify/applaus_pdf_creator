@@ -1,28 +1,37 @@
 #!/bin/zsh
 CERT_ID="Developer ID Application: Nordify UG (haftungsbeschrankt) (JG7CFYYV5B)"
 sudo rm -rf *.dmg
+sudo rm -f *.pdf
 sudo rm -f *.zip
+sudo rm -rf build/
+sudo rm -rf dist/
+sudo rm -rf .eggs/
 rm -f .DS_Store
-python -m pip install -r requirements.txt
-python setup.py py2app
-codesign --force --deep --verbose --timestamp --entitlements entitlements.plist --sign "$CERT_ID" "dist/PDF Creator.app"
-find "dist/PDF Creator.app/Contents/Resources/lib/python3.9/PyQt5/Qt5" -name "*.dylib" -exec codesign --force --timestamp --options runtime --entitlements entitlements.plist --verbose -s "$CERT_ID" {} \;
+
+pip install pyinstaller
+pyinstaller --windowed --name "PDF Creator" --icon=resources/icon.icns --add-data "resources/icon.png:." pdf_creator.py
+
+codesign --force --deep --verbose --timestamp --entitlements resources/entitlements.plist --sign "$CERT_ID" "dist/PDF Creator.app"
+
+find "dist/PDF Creator.app/Contents/Frameworks" -name "*.dylib" -exec codesign --force --timestamp --options runtime --entitlements resources/entitlements.plist --verbose -s "$CERT_ID" {} \;
 
 create-dmg \
   --volname "PDF Creator" \
   --window-size 600 450 \
-  --background "background.png" \
+  --background "resources/background.png" \
   --icon-size 100 \
   --icon "PDF Creator.app" 120 200 \
   --app-drop-link 480 200 \
   "PDF Creator.dmg" \
   "dist/PDF Creator.app"
 
-echo "read 'icns' (-16455) \"icon.icns\";" > icon.rsrc
+echo "read 'icns' (-16455) \"resources/icon.icns\";" > icon.rsrc
 Rez -append icon.rsrc -o "PDF Creator.dmg"
 SetFile -a C "PDF Creator.dmg"
 rm icon.rsrc
-codesign --force --deep --verbose --timestamp --entitlements entitlements.plist --sign "$CERT_ID" "PDF Creator.dmg"
+
+# Codesign das DMG
+codesign --force --deep --verbose --timestamp --entitlements resources/entitlements.plist --sign "$CERT_ID" "PDF Creator.dmg"
 echo "Build done."
 
 # if [ -z "$APP_SPECIFIC_PASSWORD" ]; then
