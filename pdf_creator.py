@@ -123,25 +123,6 @@ class ImageUploader(QWidget):
             self.image_layout.addWidget(frame, row, col)
         self.empty_label.setVisible(len(self.images) == 0)
 
-    def resizeEvent(self, event):
-        self.overlay.setGeometry(self.rect())
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            self.overlay.setVisible(True)
-
-    def dragLeaveEvent(self, event):
-        self.overlay.setVisible(False)
-
-    def dropEvent(self, event):
-        self.overlay.setVisible(False)
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                file_path = url.toLocalFile()
-                if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
-                    self.addImage(file_path)
-
     def openFileDialog(self):
         homedir = os.environ['HOME']
         options = QFileDialog.Options()
@@ -155,7 +136,11 @@ class ImageUploader(QWidget):
         )
         if files:
             for file in files:
-                self.addImage(file)
+                try:
+                    self.addImage(file)
+                except Exception as err:
+                    print(f"Fehler: {err}")
+
 
     def addImage(self, file_path):
         frame = QFrame(self.image_container)
