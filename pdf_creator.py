@@ -6,10 +6,11 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog,
     QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox, QSizePolicy
 )
-from PyQt5.QtGui import QPixmap, QIntValidator, QIcon
+from PyQt5.QtGui import QPixmap, QIntValidator, QImage
 from PyQt5.QtCore import Qt, QTranslator, QLibraryInfo, QLocale
 from fpdf import FPDF
-from PIL import Image
+from PIL import Image, ImageOps
+from io import BytesIO
 
 os.environ["LANG"] = "de_DE.UTF-8"
 
@@ -123,6 +124,33 @@ class ImageUploader(QWidget):
             self.image_layout.addWidget(frame, row, col)
         self.empty_label.setVisible(len(self.images) == 0)
 
+    def resource_path(self, relative_path):
+        try:
+            base_path = sys._MEIPASS
+        except AttributeError:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, relative_path)
+
+    def resizeEvent(self, event):
+        self.overlay.setGeometry(self.rect())
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self.overlay.setVisible(True)
+
+    def dragLeaveEvent(self, event):
+        self.overlay.setVisible(False)
+
+    def dropEvent(self, event):
+        self.overlay.setVisible(False)
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                file_path = url.toLocalFile()
+                if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+                    self.addImage(file_path)
+
+
     def openFileDialog(self):
         homedir = os.environ['HOME']
         options = QFileDialog.Options()
@@ -141,6 +169,16 @@ class ImageUploader(QWidget):
                 except Exception as err:
                     print(f"Fehler: {err}")
 
+    def fix_orientation_with_pillow(self, file_path):
+        with Image.open(file_path) as img:
+            img = ImageOps.exif_transpose(img)
+            
+            buf = BytesIO()
+            img.save(buf, format='JPEG')
+            
+            qimage = QImage.fromData(buf.getvalue())
+            return QPixmap.fromImage(qimage)
+
 
     def addImage(self, file_path):
         frame = QFrame(self.image_container)
@@ -148,7 +186,9 @@ class ImageUploader(QWidget):
         layout = QGridLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        pixmap = QPixmap(file_path).scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap_original = self.fix_orientation_with_pillow(file_path)
+
+        pixmap = pixmap_original.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         label = DraggableLabel(container, file_path, self)
         label.setPixmap(pixmap)
         label.setAlignment(Qt.AlignCenter)
@@ -208,25 +248,29 @@ class ImageUploader(QWidget):
         self.pdf_button.setEnabled(aktennummer_filled and dokumentenzahl_filled and images_present)
 
     def processImage(self, file_path):
-        pixmap = QPixmap(file_path)
-        if pixmap.isNull():
+        try:
+            from PIL import Image, ImageOps
+            with Image.open(file_path) as img:
+                img = ImageOps.exif_transpose(img)
+                max_side = max(img.width, img.height)
+                if max_side > 2000:
+                    scale_factor = 2000 / max_side
+                    new_width = int(img.width * scale_factor)
+                    new_height = int(img.height * scale_factor)
+                    img = img.resize((new_width, new_height), Image.LANCZOS)
+
+                temp = NamedTemporaryFile(delete=False, suffix=".jpg")
+                img.save(temp, format="JPEG", quality=85)
+                temp_path = temp.name
+                self.temp_files.append(temp_path)
+                return temp_path
+        except Exception as e:
+            print("Fehler beim Lesen/Transponieren:", e)
             return file_path
-        width = pixmap.width()
-        height = pixmap.height()
-        max_side = max(width, height)
-        if max_side > 2000:
-            scale_factor = 2000 / max_side
-            new_width = int(width * scale_factor)
-            new_height = int(height * scale_factor)
-            pixmap = pixmap.scaled(new_width, new_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        temp = NamedTemporaryFile(delete=False, suffix=".jpg")
-        temp_path = temp.name
-        pixmap.save(temp_path, "JPEG", quality=85)
-        self.temp_files.append(temp_path)
-        return temp_path
     
     def is_horizontal(self, file_path):
         with Image.open(file_path) as img:
+            img = ImageOps.exif_transpose(img)
             width, height = img.size
         return width >= height
 
@@ -284,7 +328,7 @@ class ImageUploader(QWidget):
             margin_left_right = 10
             margin_top_bottom = 10
 
-            briefkopf_path = "resources/briefkopf.png"
+            briefkopf_path = self.resource_path(os.path.join('resources', 'briefkopf.png'))
             briefkopf_width_in_pdf = page_width / 3
 
             briefkopf_img = QPixmap(briefkopf_path)
@@ -443,7 +487,6 @@ if __name__ == '__main__':
     translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
     translator.load("qtbase_de", translations_path)
     app.installTranslator(translator)
-    app.setWindowIcon(QIcon("resources/icon.png"))
     ex = ImageUploader()
     ex.show()
     sys.exit(app.exec_())
