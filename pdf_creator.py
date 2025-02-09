@@ -4,7 +4,7 @@ import os
 from tempfile import NamedTemporaryFile
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog,
-    QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox, QSizePolicy
+    QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox, QSizePolicy, QProgressDialog
 )
 from PyQt5.QtGui import QPixmap, QIntValidator, QImage
 from PyQt5.QtCore import Qt, QTranslator, QLibraryInfo, QLocale
@@ -144,11 +144,27 @@ class ImageUploader(QWidget):
 
     def dropEvent(self, event):
         self.overlay.setVisible(False)
+        self.raise_()
+        self.activateWindow()
+
         if event.mimeData().hasUrls():
+            valid_files = []
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
                 if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
-                    self.addImage(file_path)
+                    valid_files.append(file_path)
+            
+            progress_dialog = QProgressDialog("Importing images...", "Cancel", 0, len(valid_files), self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            for i, file_path in enumerate(valid_files):
+                if progress_dialog.wasCanceled():
+                    break
+                self.addImage(file_path)
+                progress_dialog.setValue(i + 1)
+                QApplication.processEvents()
 
 
     def openFileDialog(self):
@@ -163,11 +179,21 @@ class ImageUploader(QWidget):
             options=options
         )
         if files:
-            for file in files:
+            progress_dialog = QProgressDialog("Importing images...", "Cancel", 0, len(files), self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            for i, file in enumerate(files):
+                if progress_dialog.wasCanceled():
+                    break
                 try:
                     self.addImage(file)
                 except Exception as err:
                     print(f"Fehler: {err}")
+                progress_dialog.setValue(i + 1)
+                QApplication.processEvents()
+
 
     def fix_orientation_with_pillow(self, file_path):
         with Image.open(file_path) as img:
@@ -295,7 +321,7 @@ class ImageUploader(QWidget):
                 i += 1
 
         return grouped
-
+    
     def createPDF(self):
         if not self.images:
             QMessageBox.warning(self, "Keine Bilder", "Bitte fügen Sie mindestens ein Bild hinzu.")
@@ -321,33 +347,58 @@ class ImageUploader(QWidget):
             if not save_path:
                 return
 
+            # --- Immediately show a progress dialog ---
+            # We start with a dummy maximum (1) so it appears right away.
+            progress_pdf = QProgressDialog("Creating PDF...", "Cancel", 0, 1, self)
+            progress_pdf.setWindowModality(Qt.WindowModal)
+            progress_pdf.setMinimumDuration(0)
+            progress_pdf.show()
+            QApplication.processEvents()  # Force the UI to update immediately
+
+            # --- Now do the heavy work ---
+            # Group the images (if this is heavy, consider moving it to a thread)
+            grouped_images = self.group_images(self.images)
+            total_images = sum(len(group) for group in grouped_images)
+            # Update the progress dialog's maximum value based on the actual number of images.
+            progress_pdf.setMaximum(total_images)
+            progress_value = 0
+
+            # Set up PDF parameters.
             pdf = FPDF(orientation="P", unit="mm", format="A4")
             page_width = 210
             page_height = 297
 
-            margin_left_right = 10
+            # Keep only top and bottom margins.
             margin_top_bottom = 10
 
+            # Prepare header (briefkopf)
             briefkopf_path = self.resource_path(os.path.join('resources', 'briefkopf.png'))
             briefkopf_width_in_pdf = page_width / 3
-
             briefkopf_img = QPixmap(briefkopf_path)
             aspect_briefkopf = briefkopf_img.width() / briefkopf_img.height()
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
 
-            def get_content_area_top():
-                return margin_top_bottom + briefkopf_height_in_pdf
+            # Calculate available vertical space (content area)
+            content_top = margin_top_bottom + briefkopf_height_in_pdf
+            content_height = page_height - margin_top_bottom - content_top
 
-            def get_content_area_height():
-                return page_height - margin_top_bottom - get_content_area_top()
+            # Fixed text line height and spacing between images on pages with 2 images.
+            text_line_height = 10
+            spacing_between = 10
 
-            grouped_images = self.group_images(self.images)
+            # Calculate a uniform image dimension (width) as if the images were square
+            # in a two-image layout.
+            uniform_img_dim = (content_height - spacing_between - 2 * text_line_height) / 2
 
             global_image_counter = 1
 
             for page_idx, group in enumerate(grouped_images):
+                if progress_pdf.wasCanceled():
+                    break
+
                 pdf.add_page()
 
+                # Draw the header (briefkopf) at the top center.
                 x_briefkopf = (page_width - briefkopf_width_in_pdf) / 2
                 y_briefkopf = margin_top_bottom
                 pdf.image(
@@ -358,55 +409,34 @@ class ImageUploader(QWidget):
                     h=briefkopf_height_in_pdf
                 )
 
-                content_top = get_content_area_top()
-                content_height = get_content_area_height()
-                content_width = page_width - 2 * margin_left_right
-
-                def scale_to_fit(img_w, img_h, max_w, max_h):
-                    aspect = img_w / img_h
-                    if (max_w / max_h) < aspect:
-                        new_w = max_w
-                        new_h = max_w / aspect
-                    else:
-                        new_h = max_h
-                        new_w = max_h * aspect
-                    return new_w, new_h
-
                 if len(group) == 1:
                     label, file_path = group[0]
                     processed_path = self.processImage(file_path)
-
                     img = QPixmap(processed_path)
-                    img_w = img.width()
-                    img_h = img.height()
+                    orig_w, orig_h = img.width(), img.height()
 
-                    pdf.set_font("Arial", "B", 15)
-                    text_line_height = 10
+                    # Force the image to have the uniform width.
+                    new_width = uniform_img_dim
+                    new_height = orig_h * (new_width / orig_w)
 
-                    text = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter}"
-                    text_width = pdf.get_string_width(text)
-
-                    max_h_for_image = content_height - text_line_height - 30
-                    max_w_for_image = content_width
-
-                    disp_w, disp_h = scale_to_fit(img_w, img_h, max_w_for_image, max_h_for_image)
-
-                    block_total_height = disp_h + text_line_height
-
+                    block_total_height = new_height + text_line_height
                     y_block_top = content_top + (content_height - block_total_height) / 2
-
-                    x_image = margin_left_right + (content_width - disp_w) / 2
+                    x_image = (page_width - new_width) / 2
                     y_image = y_block_top
 
-                    pdf.image(processed_path, x=x_image, y=y_image, w=disp_w, h=disp_h)
+                    pdf.image(processed_path, x=x_image, y=y_image, w=new_width, h=new_height)
 
-                    x_text = margin_left_right + (content_width - text_width) / 2
-                    y_text = y_image + disp_h + 4
-
+                    pdf.set_font("Arial", "B", 15)
+                    text = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter}"
+                    text_width = pdf.get_string_width(text)
+                    x_text = (page_width - text_width) / 2
+                    y_text = y_image + new_height + 4
                     pdf.set_xy(x_text, y_text)
                     pdf.cell(text_width, text_line_height, text, align="C")
 
                     global_image_counter += 1
+                    progress_value += 1
+                    progress_pdf.setValue(progress_value)
 
                 elif len(group) == 2:
                     (label1, file_path1), (label2, file_path2) = group
@@ -415,52 +445,49 @@ class ImageUploader(QWidget):
 
                     img1 = QPixmap(processed_path1)
                     img2 = QPixmap(processed_path2)
+                    orig1_w, orig1_h = img1.width(), img1.height()
+                    orig2_w, orig2_h = img2.width(), img2.height()
 
                     pdf.set_font("Arial", "B", 15)
-                    text_line_height = 10
-
                     text1 = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter}"
                     text2 = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter + 1}"
-                    w_text1 = pdf.get_string_width(text1)
-                    w_text2 = pdf.get_string_width(text2)
+                    text1_width = pdf.get_string_width(text1)
+                    text2_width = pdf.get_string_width(text2)
 
-                    img1_w, img1_h = img1.width(), img1.height()
-                    img2_w, img2_h = img2.width(), img2.height()
+                    # Both images use the same uniform width.
+                    new1_width = uniform_img_dim
+                    new1_height = orig1_h * (new1_width / orig1_w)
+                    new2_width = uniform_img_dim
+                    new2_height = orig2_h * (new2_width / orig2_w)
 
-                    spacing_between = 10
-
-                    max_h_each_block = (content_height - spacing_between) / 2
-                    max_h_each_image = max_h_each_block - text_line_height - 20
-
-                    max_w_image = content_width
-
-                    disp1_w, disp1_h = scale_to_fit(img1_w, img1_h, max_w_image, max_h_each_image)
-                    disp2_w, disp2_h = scale_to_fit(img2_w, img2_h, max_w_image, max_h_each_image)
-
-                    block_total_height = (disp1_h + text_line_height) + spacing_between + (disp2_h + text_line_height)
-
+                    block_total_height = (new1_height + text_line_height) + spacing_between + (new2_height + text_line_height)
                     y_block_top = content_top + (content_height - block_total_height) / 2
 
-                    x1 = margin_left_right + (content_width - disp1_w) / 2
+                    x1 = (page_width - new1_width) / 2
                     y1 = y_block_top
-                    pdf.image(processed_path1, x=x1, y=y1, w=disp1_w, h=disp1_h)
+                    pdf.image(processed_path1, x=x1, y=y1, w=new1_width, h=new1_height)
 
-                    x_text1 = margin_left_right + (content_width - w_text1) / 2
-                    y_text1 = y1 + disp1_h + 4
+                    x_text1 = (page_width - text1_width) / 2
+                    y_text1 = y1 + new1_height + 4
                     pdf.set_xy(x_text1, y_text1)
-                    pdf.cell(w_text1, text_line_height, text1, align="C")
+                    pdf.cell(text1_width, text_line_height, text1, align="C")
 
                     y2 = y_text1 + text_line_height + spacing_between
-                    x2 = margin_left_right + (content_width - disp2_w) / 2
-                    pdf.image(processed_path2, x=x2, y=y2, w=disp2_w, h=disp2_h)
+                    x2 = (page_width - new2_width) / 2
+                    pdf.image(processed_path2, x=x2, y=y2, w=new2_width, h=new2_height)
 
-                    x_text2 = margin_left_right + (content_width - w_text2) / 2
-                    y_text2 = y2 + disp2_h + 4
+                    x_text2 = (page_width - text2_width) / 2
+                    y_text2 = y2 + new2_height + 4
                     pdf.set_xy(x_text2, y_text2)
-                    pdf.cell(w_text2, text_line_height, text2, align="C")
+                    pdf.cell(text2_width, text_line_height, text2, align="C")
 
                     global_image_counter += 2
+                    progress_value += 2
+                    progress_pdf.setValue(progress_value)
 
+                QApplication.processEvents()  # Allow UI updates during processing
+
+            progress_pdf.close()
             pdf.output(save_path)
 
             QMessageBox.information(self, "PDF erstellt", f"PDF erfolgreich erstellt:\n{save_path}")
@@ -480,6 +507,7 @@ class ImageUploader(QWidget):
                 except Exception as err:
                     print(f"Temporäre Datei konnte nicht gelöscht werden: {temp_path}. Fehler: {err}")
             self.temp_files.clear()
+
 
 if __name__ == '__main__':    
     app = QApplication(sys.argv)
