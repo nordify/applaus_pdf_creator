@@ -124,6 +124,13 @@ class ImageUploader(QWidget):
             self.image_layout.addWidget(frame, row, col)
         self.empty_label.setVisible(len(self.images) == 0)
 
+    def showProgress(self, max, text):
+        progress_dialog = QProgressDialog(text, "Cancel", 0, max, self)
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setMinimumDuration(0)
+        progress_dialog.show()
+        return progress_dialog
+
     def resource_path(self, relative_path):
         try:
             base_path = sys._MEIPASS
@@ -154,10 +161,7 @@ class ImageUploader(QWidget):
                 if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
                     valid_files.append(file_path)
             
-            progress_dialog = QProgressDialog("Importing images...", "Cancel", 0, len(valid_files), self)
-            progress_dialog.setWindowModality(Qt.WindowModal)
-            progress_dialog.setMinimumDuration(0)
-            progress_dialog.show()
+            progress_dialog = self.showProgress(len(valid_files), "Importing images...")
 
             for i, file_path in enumerate(valid_files):
                 if progress_dialog.wasCanceled():
@@ -179,10 +183,7 @@ class ImageUploader(QWidget):
             options=options
         )
         if files:
-            progress_dialog = QProgressDialog("Importing images...", "Cancel", 0, len(files), self)
-            progress_dialog.setWindowModality(Qt.WindowModal)
-            progress_dialog.setMinimumDuration(0)
-            progress_dialog.show()
+            progress_dialog = self.showProgress(len(files), "Importing images...")
 
             for i, file in enumerate(files):
                 if progress_dialog.wasCanceled():
@@ -347,47 +348,32 @@ class ImageUploader(QWidget):
             if not save_path:
                 return
 
-            # --- Immediately show a progress dialog ---
-            # We start with a dummy maximum (1) so it appears right away.
-            progress_pdf = QProgressDialog("Creating PDF...", "Cancel", 0, 1, self)
-            progress_pdf.setWindowModality(Qt.WindowModal)
-            progress_pdf.setMinimumDuration(0)
-            progress_pdf.show()
-            QApplication.processEvents()  # Force the UI to update immediately
+            progress_pdf = self.showProgress(1, "Creating PDF...")
+            QApplication.processEvents()
 
-            # --- Now do the heavy work ---
-            # Group the images (if this is heavy, consider moving it to a thread)
             grouped_images = self.group_images(self.images)
             total_images = sum(len(group) for group in grouped_images)
-            # Update the progress dialog's maximum value based on the actual number of images.
             progress_pdf.setMaximum(total_images)
             progress_value = 0
 
-            # Set up PDF parameters.
             pdf = FPDF(orientation="P", unit="mm", format="A4")
             page_width = 210
             page_height = 297
 
-            # Keep only top and bottom margins.
             margin_top_bottom = 10
 
-            # Prepare header (briefkopf)
             briefkopf_path = self.resource_path(os.path.join('resources', 'briefkopf.png'))
             briefkopf_width_in_pdf = page_width / 3
             briefkopf_img = QPixmap(briefkopf_path)
             aspect_briefkopf = briefkopf_img.width() / briefkopf_img.height()
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
 
-            # Calculate available vertical space (content area)
             content_top = margin_top_bottom + briefkopf_height_in_pdf
             content_height = page_height - margin_top_bottom - content_top
 
-            # Fixed text line height and spacing between images on pages with 2 images.
             text_line_height = 10
             spacing_between = 10
 
-            # Calculate a uniform image dimension (width) as if the images were square
-            # in a two-image layout.
             uniform_img_dim = (content_height - spacing_between - 2 * text_line_height) / 2
 
             global_image_counter = 1
@@ -398,7 +384,6 @@ class ImageUploader(QWidget):
 
                 pdf.add_page()
 
-                # Draw the header (briefkopf) at the top center.
                 x_briefkopf = (page_width - briefkopf_width_in_pdf) / 2
                 y_briefkopf = margin_top_bottom
                 pdf.image(
@@ -415,7 +400,6 @@ class ImageUploader(QWidget):
                     img = QPixmap(processed_path)
                     orig_w, orig_h = img.width(), img.height()
 
-                    # Force the image to have the uniform width.
                     new_width = uniform_img_dim
                     new_height = orig_h * (new_width / orig_w)
 
@@ -426,7 +410,7 @@ class ImageUploader(QWidget):
 
                     pdf.image(processed_path, x=x_image, y=y_image, w=new_width, h=new_height)
 
-                    pdf.set_font("Arial", "B", 15)
+                    pdf.set_font("Arial", "B", 14)
                     text = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter}"
                     text_width = pdf.get_string_width(text)
                     x_text = (page_width - text_width) / 2
@@ -448,13 +432,12 @@ class ImageUploader(QWidget):
                     orig1_w, orig1_h = img1.width(), img1.height()
                     orig2_w, orig2_h = img2.width(), img2.height()
 
-                    pdf.set_font("Arial", "B", 15)
+                    pdf.set_font("Arial", "B", 14)
                     text1 = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter}"
                     text2 = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl} Foto Nr. {global_image_counter + 1}"
                     text1_width = pdf.get_string_width(text1)
                     text2_width = pdf.get_string_width(text2)
 
-                    # Both images use the same uniform width.
                     new1_width = uniform_img_dim
                     new1_height = orig1_h * (new1_width / orig1_w)
                     new2_width = uniform_img_dim
@@ -485,7 +468,7 @@ class ImageUploader(QWidget):
                     progress_value += 2
                     progress_pdf.setValue(progress_value)
 
-                QApplication.processEvents()  # Allow UI updates during processing
+                QApplication.processEvents()
 
             progress_pdf.close()
             pdf.output(save_path)
