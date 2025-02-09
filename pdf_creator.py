@@ -151,8 +151,6 @@ class ImageUploader(QWidget):
 
     def dropEvent(self, event):
         self.overlay.setVisible(False)
-        self.raise_()
-        self.activateWindow()
 
         if event.mimeData().hasUrls():
             valid_files = []
