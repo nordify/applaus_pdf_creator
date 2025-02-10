@@ -2,3 +2,4 @@ setuptools
 py2app
 PyQt6
 fpdf
+Pillow

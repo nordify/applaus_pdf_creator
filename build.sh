@@ -8,6 +8,7 @@ sudo rm -rf dist/
 sudo rm -rf .eggs/
 rm -f .DS_Store
 
+pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller --windowed --name "PDF Creator" --icon=resources/icon.icns --add-data "resources:resources" pdf_creator.py
 
