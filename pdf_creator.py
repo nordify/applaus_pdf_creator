@@ -2,12 +2,12 @@ import sys
 import subprocess
 import os
 from tempfile import NamedTemporaryFile
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog,
     QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox, QSizePolicy, QProgressDialog
 )
-from PyQt5.QtGui import QPixmap, QIntValidator, QImage
-from PyQt5.QtCore import Qt, QTranslator, QLibraryInfo, QLocale
+from PyQt6.QtGui import QPixmap, QIntValidator, QImage
+from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale
 from fpdf import FPDF
 from PIL import Image, ImageOps
 from io import BytesIO
@@ -24,9 +24,11 @@ class DraggableLabel(QLabel):
 class ImageUploader(QWidget):
     def __init__(self):
         super().__init__()
-        translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+        # Update the translator call using the new QLibraryInfo API
+        translations_path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
         translator.load("qtwidgets_de", translations_path)
-        self.setLocale(QLocale(QLocale.German, QLocale.Germany))
+        # In PyQt6, use QLocale.Language and QLocale.Country enums:
+        self.setLocale(QLocale(QLocale.Language.German, QLocale.Country.Germany))
         self.initUI()
         self.setWindowTitle("PDF Creator")
         self.images = []
@@ -39,18 +41,18 @@ class ImageUploader(QWidget):
         self.setMaximumSize(750, 600)
 
         self.aktennummer_input = QLineEdit(self)
-        self.aktennummer_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.aktennummer_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.aktennummer_input.setPlaceholderText("Aktennummer")
         self.aktennummer_input.setValidator(QIntValidator())
         self.aktennummer_input.textChanged.connect(self.updatePdfButtonState)
         
         self.dokumentenkürzel_input = QComboBox(self)
-        self.dokumentenkürzel_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.dokumentenkürzel_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dokumentenkürzel_input.setContentsMargins(0, 0, 0, 0)
         self.dokumentenkürzel_input.addItems(["GA", "ST", "PR", "UB"])
         
         self.dokumentenzahl_input = QLineEdit(self)
-        self.dokumentenzahl_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.dokumentenzahl_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dokumentenzahl_input.setPlaceholderText("Dokumentenzahl")
         self.dokumentenzahl_input.setValidator(QIntValidator())
         self.dokumentenzahl_input.textChanged.connect(self.updatePdfButtonState)
@@ -69,7 +71,7 @@ class ImageUploader(QWidget):
         self.image_area = QScrollArea()
         self.image_container = QWidget()
         self.image_layout = QGridLayout()
-        self.image_layout.setAlignment(Qt.AlignTop)
+        self.image_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.image_container.setLayout(self.image_layout)
         self.image_area.setWidget(self.image_container)
         self.image_area.setWidgetResizable(True)
@@ -77,7 +79,7 @@ class ImageUploader(QWidget):
 
         self.empty_label = QLabel("Importiere Fotos oder ziehe sie hierhin", self.image_container)
         self.empty_label.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
-        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_layout = QVBoxLayout()
         self.empty_layout.addStretch()
         self.empty_layout.addWidget(self.empty_label)
@@ -91,13 +93,13 @@ class ImageUploader(QWidget):
         self.pdf_button = QPushButton("PDF erstellen", self)
         self.pdf_button.setEnabled(False)
         self.pdf_button.clicked.connect(self.createPDF)
-        self.pdf_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.pdf_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         pdf_buttons_layout.addWidget(self.pdf_button)
         
         self.reset_button = QPushButton("Zurücksetzen", self)
         self.reset_button.setStyleSheet("color: #ff453a;")
         self.reset_button.clicked.connect(self.resetApp)
-        self.reset_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.reset_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         pdf_buttons_layout.addWidget(self.reset_button)
         
         layout.addLayout(pdf_buttons_layout)
@@ -106,7 +108,7 @@ class ImageUploader(QWidget):
 
         self.overlay = QLabel(self)
         self.overlay.setStyleSheet("background-color: rgba(255, 255, 255, 0.3);")
-        self.overlay.setAlignment(Qt.AlignCenter)
+        self.overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.overlay.setText("Drag & Drop Here")
         self.overlay.setVisible(False)
 
@@ -124,9 +126,9 @@ class ImageUploader(QWidget):
             self.image_layout.addWidget(frame, row, col)
         self.empty_label.setVisible(len(self.images) == 0)
 
-    def showProgress(self, max, text):
-        progress_dialog = QProgressDialog(text, "Cancel", 0, max, self)
-        progress_dialog.setWindowModality(Qt.WindowModal)
+    def showProgress(self, maximum, text):
+        progress_dialog = QProgressDialog(text, "Cancel", 0, maximum, self)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         progress_dialog.setMinimumDuration(0)
         progress_dialog.show()
         return progress_dialog
@@ -170,17 +172,14 @@ class ImageUploader(QWidget):
                 progress_dialog.setValue(i + 1)
                 QApplication.processEvents()
 
-
     def openFileDialog(self):
-        homedir = os.environ['HOME']
-        options = QFileDialog.Options()
+        homedir = os.environ.get('HOME', '')
         dialog = QFileDialog()
         files, _ = dialog.getOpenFileNames(
             parent=self, 
             caption="Bilder auswählen", 
             directory=homedir, 
-            filter="Bilder (*.png *.jpg *.jpeg *.bmp);;Alle Dateien (*)", 
-            options=options
+            filter="Bilder (*.png *.jpg *.jpeg *.bmp);;Alle Dateien (*)"
         )
         if files:
             progress_dialog = self.showProgress(len(files), "Importing images...")
@@ -195,7 +194,6 @@ class ImageUploader(QWidget):
                 progress_dialog.setValue(i + 1)
                 QApplication.processEvents()
 
-
     def fix_orientation_with_pillow(self, file_path):
         with Image.open(file_path) as img:
             img = ImageOps.exif_transpose(img)
@@ -206,7 +204,6 @@ class ImageUploader(QWidget):
             qimage = QImage.fromData(buf.getvalue())
             return QPixmap.fromImage(qimage)
 
-
     def addImage(self, file_path):
         frame = QFrame(self.image_container)
         container = QWidget(frame)
@@ -214,11 +211,13 @@ class ImageUploader(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         pixmap_original = self.fix_orientation_with_pillow(file_path)
-
-        pixmap = pixmap_original.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        # Use the new enum names for aspect ratio and transformation mode:
+        pixmap = pixmap_original.scaled(120, 120,
+                                        Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
         label = DraggableLabel(container, file_path, self)
         label.setPixmap(pixmap)
-        label.setAlignment(Qt.AlignCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         remove_button = QPushButton("✖", container)
         remove_button.setFixedSize(16, 16)
@@ -236,8 +235,8 @@ class ImageUploader(QWidget):
             }
         """)
 
-        layout.addWidget(label, 0, 0, Qt.AlignCenter)
-        layout.addWidget(remove_button, 0, 0, Qt.AlignTop | Qt.AlignRight)
+        layout.addWidget(label, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(remove_button, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(0, 0, 0, 0)
@@ -256,8 +255,8 @@ class ImageUploader(QWidget):
 
     def resetApp(self):
         reply = QMessageBox.question(self, 'Bestätigung', 'Möchten Sie die App wirklich zurücksetzen?',
-                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             self.aktennummer_input.clear()
             self.dokumentenkürzel_input.setCurrentIndex(0)
             self.dokumentenzahl_input.clear()
@@ -276,7 +275,6 @@ class ImageUploader(QWidget):
 
     def processImage(self, file_path):
         try:
-            from PIL import Image, ImageOps
             with Image.open(file_path) as img:
                 img = ImageOps.exif_transpose(img)
                 max_side = max(img.width, img.height)
@@ -336,14 +334,12 @@ class ImageUploader(QWidget):
             return
 
         try:
-            options = QFileDialog.Options()
             first_image_dir = os.path.dirname(self.images[0][1])
             save_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "PDF speichern",
                 f"{first_image_dir}/{aktennummer}-{dokumentenkürzel}-{dokumentenzahl}_Fotos.pdf",
-                "PDF Files (*.pdf);;All Files (*)",
-                options=options
+                "PDF Files (*.pdf);;All Files (*)"
             )
             if not save_path:
                 return
@@ -491,13 +487,12 @@ class ImageUploader(QWidget):
                     print(f"Temporäre Datei konnte nicht gelöscht werden: {temp_path}. Fehler: {err}")
             self.temp_files.clear()
 
-
 if __name__ == '__main__':    
     app = QApplication(sys.argv)
     translator = QTranslator()
-    translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+    translations_path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
     translator.load("qtbase_de", translations_path)
     app.installTranslator(translator)
     ex = ImageUploader()
     ex.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
