@@ -83,19 +83,40 @@ class PDFCreationWorker(QThread):
                 img = ImageOps.exif_transpose(img)
                 if img.mode in ("RGBA", "LA"):
                     img = img.convert("RGB")
+                
+                width, height = img.size
+                aspect_ratio = width / height
+
+                if width >= height and 1.0 <= aspect_ratio <= 1.33:
+                    new_width = width
+                    new_height = int(width * 3 / 4)
+
+                    if new_height > height:
+                        new_height = height
+                        new_width = int(height * 4 / 3)
+
+                    left = (width - new_width) / 2
+                    top = (height - new_height) / 2
+                    right = left + new_width
+                    bottom = top + new_height
+                    img = img.crop((left, top, right, bottom))
+
                 max_side = max(img.width, img.height)
                 if max_side > 2000:
                     scale_factor = 2000 / max_side
                     new_width = int(img.width * scale_factor)
                     new_height = int(img.height * scale_factor)
                     img = img.resize((new_width, new_height), Image.LANCZOS)
+
                 image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
                 final_path = os.path.join(self.output_folder, image_filename)
                 img.save(final_path, format="JPEG", quality=85)
+                
                 return final_path
         except Exception as e:
             print("Fehler beim processImage:", e)
             return file_path
+    
 
     def run(self):
         try:
@@ -114,7 +135,7 @@ class PDFCreationWorker(QThread):
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
             content_top = margin_top_bottom + briefkopf_height_in_pdf + header_spacing
             content_height = page_height - margin_top_bottom - content_top
-            uniform_img_dim = (content_height - spacing_between) / 2 - (offset + text_line_height)
+            uniform_img_dim = (content_height - spacing_between - (2 * (offset + text_line_height))) / 1.5
             grouped = []
             i = 0
             n = len(self.image_paths)
