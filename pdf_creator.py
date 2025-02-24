@@ -135,7 +135,7 @@ class PDFCreationWorker(QThread):
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
             content_top = margin_top_bottom + briefkopf_height_in_pdf + header_spacing
             content_height = page_height - margin_top_bottom - content_top
-            uniform_img_dim = (content_height - spacing_between - (2 * (offset + text_line_height))) / 1.5
+            uniform_img_dim = ((content_height - spacing_between - (2 * (offset + text_line_height))) / 1.5) - 5
             grouped = []
             i = 0
             n = len(self.image_paths)
