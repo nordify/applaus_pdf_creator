@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox,
     QSizePolicy, QProgressDialog
 )
-from PyQt6.QtGui import QPixmap, QIntValidator, QImage, QIcon
-from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap, QIntValidator, QImage, QIcon, QDrag
+from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale, QThread, pyqtSignal, QMimeData, QPoint
 from fpdf import FPDF
 
 os.environ["LANG"] = "de_DE.UTF-8"
@@ -220,6 +220,48 @@ class DraggableLabel(QLabel):
         self.file_path = file_path
         self.main_window = main_window
         self.setAcceptDrops(True)
+        self.setStyleSheet("border: 2px solid transparent;")
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start_position = event.pos()
+            
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+            
+        if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
+            return
+            
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(self.file_path)
+        drag.setMimeData(mime_data)
+        
+        pixmap = self.pixmap()
+        if pixmap:
+            drag.setPixmap(pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio))
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+            
+        drag.exec(Qt.DropAction.MoveAction)
+        
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+            self.setStyleSheet("border: 2px solid #3498db;")
+            
+    def dragLeaveEvent(self, event):
+        self.setStyleSheet("border: 2px solid transparent;")
+            
+    def dropEvent(self, event):
+        source_path = event.mimeData().text()
+        target_path = self.file_path
+        
+        if source_path != target_path:
+            self.main_window.reorderImages(source_path, target_path)
+            event.acceptProposedAction()
+        
+        self.setStyleSheet("border: 2px solid transparent;")
 
 class ImageUploader(QWidget):
     def __init__(self):
@@ -407,6 +449,22 @@ class ImageUploader(QWidget):
 
     def importFinished(self):
         self.import_progress_dialog.close()
+
+    def reorderImages(self, source_path, target_path):
+        source_index = -1
+        target_index = -1
+        
+        for i, (_, path) in enumerate(self.images):
+            if path == source_path:
+                source_index = i
+            if path == target_path:
+                target_index = i
+                
+        if source_index != -1 and target_index != -1:
+            # Move the image from source to target position
+            item = self.images.pop(source_index)
+            self.images.insert(target_index, item)
+            self.rearrangeImages()    
 
     def removeImage(self, frame, file_path):
         self.image_layout.removeWidget(frame)
