@@ -132,14 +132,15 @@ class PDFCreationWorker(QThread):
 
             with Image.open(self.briefkopf_path) as briefkopf_img:
                 aspect_briefkopf = briefkopf_img.width / briefkopf_img.height
-            
+
             briefkopf_width_in_pdf = page_width / 3
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
+
             content_top = margin_top_bottom + briefkopf_height_in_pdf + header_spacing
             content_height = page_height - margin_top_bottom - content_top
-            
-            uniform_img_dim = ((content_height - spacing_between - (2 * (offset + text_line_height))) / 1.5) - 5
-            
+
+            uniform_img_dim = (content_height - spacing_between - (2 * (offset + text_line_height))) / 1.5
+
             grouped = []
             i = 0
             n = len(self.image_paths)
@@ -155,7 +156,7 @@ class PDFCreationWorker(QThread):
                     else:
                         grouped.append([self.image_paths[i]])
                         i += 1
-            
+
             progress_count = 0
             global_image_counter = 1
 
@@ -168,7 +169,8 @@ class PDFCreationWorker(QThread):
                 y_briefkopf = margin_top_bottom
                 pdf.image(self.briefkopf_path, x=x_briefkopf, y=y_briefkopf, w=briefkopf_width_in_pdf, h=briefkopf_height_in_pdf)
 
-                for idx, file_path in enumerate(group):
+                if len(group) == 1:
+                    file_path = group[0]
                     processed_path = self.processImage(file_path, global_image_counter)
 
                     with Image.open(processed_path) as img:
@@ -177,21 +179,15 @@ class PDFCreationWorker(QThread):
                     new_width = uniform_img_dim
                     new_height = orig_h * (new_width / orig_w)
 
-                    if new_height > content_height:
-                        new_height = content_height
+                    if new_height > content_height - 15:
+                        new_height = content_height - 15
                         new_width = orig_w * (new_height / orig_h)
 
-                    if len(group) == 1:
-                        block_total_height = new_height + offset + text_line_height
-                        y_block_top = content_top + (content_height - block_total_height) / 2
-                    else:
-                        if idx == 0:
-                            y_block_top = content_top + (content_height - (2 * new_height + spacing_between + 2 * (offset + text_line_height))) / 2
-                        else:
-                            y_block_top = content_top + new_height + spacing_between + offset + text_line_height
-
+                    block_total_height = new_height + offset + text_line_height
+                    y_block_top = (content_top + (content_height - block_total_height) / 2)
                     x_image = (page_width - new_width) / 2
                     y_image = y_block_top
+
                     pdf.image(processed_path, x=x_image, y=y_image, w=new_width, h=new_height)
 
                     pdf.set_font("Arial", "B", 11)
@@ -206,8 +202,63 @@ class PDFCreationWorker(QThread):
                     progress_count += 1
                     self.progressUpdate.emit(progress_count)
 
+                elif len(group) == 2:
+                    file_path1, file_path2 = group
+                    processed_path1 = self.processImage(file_path1, global_image_counter)
+                    processed_path2 = self.processImage(file_path2, global_image_counter + 1)
+
+                    with Image.open(processed_path1) as img1:
+                        orig1_w, orig1_h = img1.size
+                    with Image.open(processed_path2) as img2:
+                        orig2_w, orig2_h = img2.size
+
+                    pdf.set_font("Arial", "B", 11)
+                    text1 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
+                    text2 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter + 1}"
+                    text1_width = pdf.get_string_width(text1)
+                    text2_width = pdf.get_string_width(text2)
+
+                    new1_width = uniform_img_dim
+                    new1_height = orig1_h * (new1_width / orig1_w)
+                    new2_width = uniform_img_dim
+                    new2_height = orig2_h * (new2_width / orig2_w)
+
+                    if new1_height > (content_height - spacing_between) / 2:
+                        new1_height = (content_height - spacing_between) / 2
+                        new1_width = orig1_w * (new1_height / orig1_h)
+
+                    if new2_height > (content_height - spacing_between) / 2:
+                        new2_height = (content_height - spacing_between) / 2
+                        new2_width = orig2_w * (new2_height / orig2_h)
+
+                    block_total_height = (new1_height + offset + text_line_height) + spacing_between + (new2_height + offset + text_line_height)
+                    y_block_top = content_top + (content_height - block_total_height) / 2
+
+                    x1 = (page_width - new1_width) / 2
+                    y1 = y_block_top
+                    pdf.image(processed_path1, x=x1, y=y1, w=new1_width, h=new1_height)
+
+                    x_text1 = (page_width - text1_width) / 2
+                    y_text1 = y1 + new1_height + offset
+                    pdf.set_xy(x_text1, y_text1)
+                    pdf.cell(text1_width, text_line_height, text1, align="C")
+
+                    y2 = y_text1 + text_line_height + spacing_between
+                    x2 = (page_width - new2_width) / 2
+                    pdf.image(processed_path2, x=x2, y=y2, w=new2_width, h=new2_height)
+
+                    x_text2 = (page_width - text2_width) / 2
+                    y_text2 = y2 + new2_height + offset
+                    pdf.set_xy(x_text2, y_text2)
+                    pdf.cell(text2_width, text_line_height, text2, align="C")
+
+                    global_image_counter += 2
+                    progress_count += 2
+                    self.progressUpdate.emit(progress_count)
+
             if not self._isCanceled:
                 pdf.output(self.save_path)
+
             self.finished.emit(self.save_path)
 
         except Exception as e:
