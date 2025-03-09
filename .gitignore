@@ -6,3 +6,5 @@
 .DS_Store
 *.pdf
 *.spec
+notarization_info.json
+notarization_log.json

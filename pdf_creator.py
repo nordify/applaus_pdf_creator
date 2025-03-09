@@ -603,13 +603,16 @@ class ImageUploader(QWidget):
         output_folder = os.path.join(parent_dir, base_name)
         if old_folder_existed:
             if output_folder == folder_suggestion:
-                reply = QMessageBox.question(
-                    self,
-                    "Ordner existiert bereits",
-                    f"Der Ordner\n\n{output_folder}\n\nexistiert bereits.\nMöchten Sie den Inhalt überschreiben?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
-                )
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("Ordner existiert bereits")
+                msg_box.setText(f"Der Ordner\n\n{output_folder}\n\nexistiert bereits.\nMöchten Sie den Inhalt überschreiben?")
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+                msg_box.setIcon(QMessageBox.Icon.Question)
+                # Use the same icon as the main application
+                icon_path = self.resource_path(os.path.join('resources', 'icon.png'))
+                msg_box.setWindowIcon(QIcon(icon_path))
+                reply = msg_box.exec()
                 if reply == QMessageBox.StandardButton.Yes:
                     try:
                         shutil.rmtree(temp_renamed_folder)
@@ -687,7 +690,15 @@ class ImageUploader(QWidget):
 
     def pdfFinished(self, save_path):
         self.pdf_progress_dialog.close()
-        QMessageBox.information(self, "PDF erstellt", f"PDF erfolgreich erstellt:\n{save_path}")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("PDF erstellt")
+        msg_box.setText(f"PDF erfolgreich erstellt:\n{save_path}")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        # Use the same icon as the main application
+        icon_path = self.resource_path(os.path.join('resources', 'icon.png'))
+        msg_box.setWindowIcon(QIcon(icon_path))
+        msg_box.exec()
+        
         if sys.platform == "win32":
             os.startfile(save_path)
         elif sys.platform == "darwin":
