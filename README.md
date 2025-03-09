@@ -11,4 +11,4 @@ Installationsprozess:
 - Im letzten Schritt erscheint eine neue Meldung, bei dieser müssen Sie auf "Öffnen" klicken:
 ![](https://github.com/nordify/applaus_pdf_creator/blob/main/docs/3.png?raw=true)
 - Für spätere Nutzung finden Sie die Anwendung unter dem Namen "PDF Creator". Die Anwendung ist nun installiert, öffnet sich und kann benutzt werden:
-![](https://github.com/nordify/applaus_pdf_creator/blob/main/docs/3.png?raw=true)
+![](https://github.com/nordify/applaus_pdf_creator/blob/main/docs/4.png?raw=true)
