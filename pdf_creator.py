@@ -9,11 +9,12 @@ from PyQt6.QtWidgets import (
     QLineEdit, QComboBox, QScrollArea, QFrame, QGridLayout, QHBoxLayout, QMessageBox,
     QSizePolicy, QProgressDialog
 )
-from PyQt6.QtGui import QPixmap, QIntValidator, QImage, QIcon
-from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap, QIntValidator, QImage, QIcon, QDrag
+from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale, QThread, pyqtSignal, QMimeData, QPoint
 from fpdf import FPDF
 
 os.environ["LANG"] = "de_DE.UTF-8"
+
 
 class ImageImportWorker(QThread):
     imageImported = pyqtSignal(str, QImage)
@@ -48,12 +49,14 @@ class ImageImportWorker(QThread):
             self.progress.emit(count)
         self.finished.emit()
 
+
 class PDFCreationWorker(QThread):
     progressUpdate = pyqtSignal(int)
     finished = pyqtSignal(str)
     errorOccurred = pyqtSignal(str)
 
-    def __init__(self, image_paths, aktennummer, dokumentenkürzel, dokumentenzahl, pdf_path, briefkopf_path, output_folder):
+    def __init__(self, image_paths, aktennummer, dokumentenkürzel, dokumentenzahl,
+                 pdf_path, briefkopf_path, output_folder):
         super().__init__()
         self.image_paths = image_paths
         self.aktennummer = aktennummer
@@ -83,18 +86,16 @@ class PDFCreationWorker(QThread):
                 img = ImageOps.exif_transpose(img)
                 if img.mode in ("RGBA", "LA"):
                     img = img.convert("RGB")
-                
+
                 width, height = img.size
                 aspect_ratio = width / height
 
                 if width >= height and 1.0 <= aspect_ratio <= 1.33:
                     new_width = width
                     new_height = int(width * 3 / 4)
-
                     if new_height > height:
                         new_height = height
                         new_width = int(height * 4 / 3)
-
                     left = (width - new_width) / 2
                     top = (height - new_height) / 2
                     right = left + new_width
@@ -111,12 +112,10 @@ class PDFCreationWorker(QThread):
                 image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
                 final_path = os.path.join(self.output_folder, image_filename)
                 img.save(final_path, format="JPEG", quality=85)
-                
                 return final_path
         except Exception as e:
             print("Fehler beim processImage:", e)
             return file_path
-    
 
     def run(self):
         try:
@@ -133,6 +132,7 @@ class PDFCreationWorker(QThread):
             with Image.open(self.briefkopf_path) as briefkopf_img:
                 aspect_briefkopf = briefkopf_img.width / briefkopf_img.height
 
+
             briefkopf_width_in_pdf = page_width / 3
             briefkopf_height_in_pdf = briefkopf_width_in_pdf / aspect_briefkopf
 
@@ -144,7 +144,6 @@ class PDFCreationWorker(QThread):
             grouped = []
             i = 0
             n = len(self.image_paths)
-
             while i < n:
                 if not self.is_horizontal(self.image_paths[i]):
                     grouped.append([self.image_paths[i]])
@@ -157,6 +156,7 @@ class PDFCreationWorker(QThread):
                         grouped.append([self.image_paths[i]])
                         i += 1
 
+
             progress_count = 0
             global_image_counter = 1
 
@@ -167,12 +167,12 @@ class PDFCreationWorker(QThread):
                 pdf.add_page()
                 x_briefkopf = (page_width - briefkopf_width_in_pdf) / 2
                 y_briefkopf = margin_top_bottom
-                pdf.image(self.briefkopf_path, x=x_briefkopf, y=y_briefkopf, w=briefkopf_width_in_pdf, h=briefkopf_height_in_pdf)
+                pdf.image(self.briefkopf_path, x=x_briefkopf, y=y_briefkopf,
+                          w=briefkopf_width_in_pdf, h=briefkopf_height_in_pdf)
 
                 if len(group) == 1:
                     file_path = group[0]
                     processed_path = self.processImage(file_path, global_image_counter)
-
                     with Image.open(processed_path) as img:
                         orig_w, orig_h = img.size
 
@@ -271,6 +271,45 @@ class DraggableLabel(QLabel):
         self.file_path = file_path
         self.main_window = main_window
         self.setAcceptDrops(True)
+        self.setStyleSheet("border: 2px solid transparent;")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start_position = event.pos()
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+        if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(self.file_path)
+        drag.setMimeData(mime_data)
+
+        pixmap = self.pixmap()
+        if pixmap:
+            drag.setPixmap(pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio))
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+            self.setStyleSheet("border: 2px solid #3498db;")
+
+    def dragLeaveEvent(self, event):
+        self.setStyleSheet("border: 2px solid transparent;")
+
+    def dropEvent(self, event):
+        source_path = event.mimeData().text()
+        target_path = self.file_path
+        if source_path != target_path:
+            self.main_window.reorderImages(source_path, target_path)
+            event.acceptProposedAction()
+        self.setStyleSheet("border: 2px solid transparent;")
+
 
 class ImageUploader(QWidget):
     def __init__(self):
@@ -290,28 +329,34 @@ class ImageUploader(QWidget):
         self.setAcceptDrops(True)
         self.setMinimumSize(750, 600)
         self.setMaximumSize(750, 600)
+
         self.aktennummer_input = QLineEdit(self)
         self.aktennummer_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.aktennummer_input.setPlaceholderText("Aktennummer")
         self.aktennummer_input.setValidator(QIntValidator())
         self.aktennummer_input.textChanged.connect(self.updatePdfButtonState)
+
         self.dokumentenkürzel_input = QComboBox(self)
         self.dokumentenkürzel_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dokumentenkürzel_input.addItems(["GA", "ST", "PR", "UB", "OT", "BWS"])
+
         self.dokumentenzahl_input = QLineEdit(self)
         self.dokumentenzahl_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dokumentenzahl_input.setPlaceholderText("Dokumentenzahl")
         self.dokumentenzahl_input.setValidator(QIntValidator())
         self.dokumentenzahl_input.textChanged.connect(self.updatePdfButtonState)
+
         layout.addWidget(QLabel("Aktennummer:"))
         layout.addWidget(self.aktennummer_input)
         layout.addWidget(QLabel("Dokumentenkürzel:"))
         layout.addWidget(self.dokumentenkürzel_input)
         layout.addWidget(QLabel("Dokumentenzahl:"))
         layout.addWidget(self.dokumentenzahl_input)
+
         self.upload_button = QPushButton("Dateien hinzufügen", self)
         self.upload_button.clicked.connect(self.openFileDialog)
         layout.addWidget(self.upload_button)
+
         self.image_area = QScrollArea()
         self.image_container = QWidget()
         self.image_layout = QGridLayout()
@@ -320,6 +365,7 @@ class ImageUploader(QWidget):
         self.image_area.setWidget(self.image_container)
         self.image_area.setWidgetResizable(True)
         layout.addWidget(self.image_area)
+
         self.empty_label = QLabel("Importiere Fotos oder ziehe sie hierhin", self.image_container)
         self.empty_label.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -328,21 +374,26 @@ class ImageUploader(QWidget):
         self.empty_layout.addWidget(self.empty_label)
         self.empty_layout.addStretch()
         self.image_layout.addLayout(self.empty_layout, 0, 0)
+
         pdf_buttons_layout = QHBoxLayout()
         pdf_buttons_layout.setContentsMargins(150, 10, 150, 0)
         pdf_buttons_layout.setSpacing(10)
+
         self.pdf_button = QPushButton("PDF erstellen", self)
         self.pdf_button.setEnabled(False)
         self.pdf_button.clicked.connect(self.createPDF)
         self.pdf_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         pdf_buttons_layout.addWidget(self.pdf_button)
+
         self.reset_button = QPushButton("Zurücksetzen", self)
         self.reset_button.setStyleSheet("color: #ff453a;")
         self.reset_button.clicked.connect(self.resetApp)
         self.reset_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         pdf_buttons_layout.addWidget(self.reset_button)
+
         layout.addLayout(pdf_buttons_layout)
         self.setLayout(layout)
+
         self.overlay = QLabel(self)
         self.overlay.setStyleSheet("background-color: rgba(255, 255, 255, 0.3);")
         self.overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -429,7 +480,8 @@ class ImageUploader(QWidget):
         layout = QGridLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         label = DraggableLabel(container, file_path, self)
-        scaled_pixmap = pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled_pixmap = pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio,
+                                      Qt.TransformationMode.SmoothTransformation)
         label.setPixmap(scaled_pixmap)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         remove_button = QPushButton("✖", container)
@@ -458,6 +510,19 @@ class ImageUploader(QWidget):
 
     def importFinished(self):
         self.import_progress_dialog.close()
+
+    def reorderImages(self, source_path, target_path):
+        source_index = -1
+        target_index = -1
+        for i, (_, path) in enumerate(self.images):
+            if path == source_path:
+                source_index = i
+            if path == target_path:
+                target_index = i
+        if source_index != -1 and target_index != -1:
+            item = self.images.pop(source_index)
+            self.images.insert(target_index, item)
+            self.rearrangeImages()
 
     def removeImage(self, frame, file_path):
         self.image_layout.removeWidget(frame)
@@ -585,6 +650,7 @@ class ImageUploader(QWidget):
         os.makedirs(output_folder, exist_ok=True)
         pdf_path = os.path.join(output_folder, f"{base_name}.pdf")
         image_paths = [p for _, p in self.images]
+
         def is_horizontal(fp):
             try:
                 with Image.open(fp) as im:
@@ -593,6 +659,7 @@ class ImageUploader(QWidget):
                 return w >= h
             except:
                 return False
+
         grouped = []
         i = 0
         n = len(image_paths)
@@ -610,7 +677,8 @@ class ImageUploader(QWidget):
         total_images = sum(len(g) for g in grouped)
         self.pdf_progress_dialog = self.showProgress(total_images, "Creating PDF...")
         briefkopf_path = self.resource_path(os.path.join('resources', 'briefkopf.png'))
-        self.pdf_worker = PDFCreationWorker(image_paths, aktennummer, dokumentenkürzel, dokumentenzahl, pdf_path, briefkopf_path, output_folder)
+        self.pdf_worker = PDFCreationWorker(image_paths, aktennummer, dokumentenkürzel,
+                                             dokumentenzahl, pdf_path, briefkopf_path, output_folder)
         self.pdf_worker.progressUpdate.connect(lambda val: self.pdf_progress_dialog.setValue(val))
         self.pdf_progress_dialog.canceled.connect(self.pdf_worker.cancel)
         self.pdf_worker.finished.connect(self.pdfFinished)
@@ -630,6 +698,7 @@ class ImageUploader(QWidget):
     def pdfError(self, error_message):
         self.pdf_progress_dialog.close()
         QMessageBox.critical(self, "Fehler", f"Beim Erstellen der PDF ist ein Fehler aufgetreten:\n{error_message}")
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
