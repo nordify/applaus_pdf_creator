@@ -56,7 +56,7 @@ class PDFCreationWorker(QThread):
     errorOccurred = pyqtSignal(str)
 
     def __init__(self, image_paths, aktennummer, dokumentenkürzel, dokumentenzahl,
-                 pdf_path, briefkopf_path, output_folder):
+                 pdf_path, briefkopf_path, output_folder, start_photo_number=1):
         super().__init__()
         self.image_paths = image_paths
         self.aktennummer = aktennummer
@@ -65,6 +65,7 @@ class PDFCreationWorker(QThread):
         self.save_path = pdf_path
         self.briefkopf_path = briefkopf_path
         self.output_folder = output_folder
+        self.start_photo_number = start_photo_number
         self._isCanceled = False
 
     def cancel(self):
@@ -83,6 +84,7 @@ class PDFCreationWorker(QThread):
     def processImage(self, file_path, image_counter):
         try:
             with Image.open(file_path) as img:
+                img_raw = img
                 img = ImageOps.exif_transpose(img)
                 if img.mode in ("RGBA", "LA"):
                     img = img.convert("RGB")
@@ -109,12 +111,15 @@ class PDFCreationWorker(QThread):
                     new_height = int(img.height * scale_factor)
                     img = img.resize((new_width, new_height), Image.LANCZOS)
 
-                image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
+                if self.dokumentenkürzel.startswith("("):
+                    image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
+                else:
+                    image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
                 final_path = os.path.join(self.output_folder, image_filename)
-                img.save(final_path, format="JPEG", quality=85)
+                img_raw.save(final_path, format="JPEG", quality=85)
                 return final_path
         except Exception as e:
-            print("Fehler beim processImage:", e)
+            print("Fehler bei processImage:", e)
             return file_path
 
     def run(self):
@@ -158,8 +163,8 @@ class PDFCreationWorker(QThread):
 
 
             progress_count = 0
-            global_image_counter = 1
-
+            global_image_counter = self.start_photo_number  # Use the starting number
+            
             for group in grouped:
                 if self._isCanceled:
                     break
@@ -191,7 +196,11 @@ class PDFCreationWorker(QThread):
                     pdf.image(processed_path, x=x_image, y=y_image, w=new_width, h=new_height)
 
                     pdf.set_font("Arial", "B", 11)
-                    text = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
+                    
+                    if self.dokumentenkürzel.startswith("("):
+                        text = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
+                    else:
+                        text = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
                     text_width = pdf.get_string_width(text)
                     x_text = (page_width - text_width) / 2
                     y_text = y_image + new_height + offset
@@ -213,8 +222,12 @@ class PDFCreationWorker(QThread):
                         orig2_w, orig2_h = img2.size
 
                     pdf.set_font("Arial", "B", 11)
-                    text1 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
-                    text2 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter + 1}"
+                    if self.dokumentenkürzel.startswith("("):
+                        text1 = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
+                        text2 = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {global_image_counter + 1}"
+                    else:
+                        text1 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter}"
+                        text2 = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {global_image_counter + 1}"
                     text1_width = pdf.get_string_width(text1)
                     text2_width = pdf.get_string_width(text2)
 
@@ -270,6 +283,7 @@ class DraggableLabel(QLabel):
         super().__init__(parent)
         self.file_path = file_path
         self.main_window = main_window
+        self.unique_id: str | None = None  # Use type annotation to indicate it can be str or None
         self.setAcceptDrops(True)
         self.setStyleSheet("border: 2px solid transparent;")
 
@@ -302,6 +316,12 @@ class DraggableLabel(QLabel):
     def dragLeaveEvent(self, event):
         self.setStyleSheet("border: 2px solid transparent;")
 
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
     def dropEvent(self, event):
         source_path = event.mimeData().text()
         target_path = self.file_path
@@ -333,17 +353,15 @@ class ImageUploader(QWidget):
         self.aktennummer_input = QLineEdit(self)
         self.aktennummer_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.aktennummer_input.setPlaceholderText("Aktennummer")
-        self.aktennummer_input.setValidator(QIntValidator())
         self.aktennummer_input.textChanged.connect(self.updatePdfButtonState)
 
         self.dokumentenkürzel_input = QComboBox(self)
         self.dokumentenkürzel_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.dokumentenkürzel_input.addItems(["GA", "ST", "PR", "UB", "OT", "BWS"])
+        self.dokumentenkürzel_input.addItems(["(Dokumentenkürzel auswählen oder leer lassen)", "GA", "ST", "PR", "UB", "OT", "BWS"])
 
         self.dokumentenzahl_input = QLineEdit(self)
         self.dokumentenzahl_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dokumentenzahl_input.setPlaceholderText("Dokumentenzahl")
-        self.dokumentenzahl_input.setValidator(QIntValidator())
         self.dokumentenzahl_input.textChanged.connect(self.updatePdfButtonState)
 
         layout.addWidget(QLabel("Aktennummer:"))
@@ -353,10 +371,33 @@ class ImageUploader(QWidget):
         layout.addWidget(QLabel("Dokumentenzahl:"))
         layout.addWidget(self.dokumentenzahl_input)
 
+        # Add starting photo number input
+        start_number_layout = QHBoxLayout()
+        start_number_layout.addWidget(QLabel("Startindex:"))
+        self.start_photo_number = QLineEdit(self)
+        self.start_photo_number.setText("1")  # Default value is 1 (not 0)
+        self.start_photo_number.setValidator(QIntValidator(1, 999))  # Only allow integers
+        self.start_photo_number.setFixedWidth(60)
+        start_number_layout.addWidget(self.start_photo_number)
+        start_number_layout.addStretch()
+        layout.addLayout(start_number_layout)
+
         self.upload_button = QPushButton("Dateien hinzufügen", self)
         self.upload_button.clicked.connect(self.openFileDialog)
         layout.addWidget(self.upload_button)
 
+        # Create a container for the image area and counter
+        image_container_layout = QVBoxLayout()
+        
+        # Add image counter label
+        counter_layout = QHBoxLayout()
+        counter_layout.addStretch()
+        self.image_counter_label = QLabel("0 Bilder", self)
+        self.image_counter_label.setStyleSheet("color: rgba(255, 255, 255, 0.7); font-weight: bold;")
+        counter_layout.addWidget(self.image_counter_label)
+        image_container_layout.addLayout(counter_layout)
+        
+        # Add the image area
         self.image_area = QScrollArea()
         self.image_container = QWidget()
         self.image_layout = QGridLayout()
@@ -364,7 +405,9 @@ class ImageUploader(QWidget):
         self.image_container.setLayout(self.image_layout)
         self.image_area.setWidget(self.image_container)
         self.image_area.setWidgetResizable(True)
-        layout.addWidget(self.image_area)
+        image_container_layout.addWidget(self.image_area)
+        
+        layout.addLayout(image_container_layout)
 
         self.empty_label = QLabel("Importiere Fotos oder ziehe sie hierhin", self.image_container)
         self.empty_label.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
@@ -408,7 +451,7 @@ class ImageUploader(QWidget):
                 if widget and widget != self.empty_label:
                     self.image_layout.removeWidget(widget)
                     widget.setParent(None)
-        for idx, (frame, _) in enumerate(self.images):
+        for idx, (frame, _, _) in enumerate(self.images):
             row = idx // 4
             col = idx % 4
             self.image_layout.addWidget(frame, row, col)
@@ -451,6 +494,7 @@ class ImageUploader(QWidget):
                     valid_files.append(file_path)
             if valid_files:
                 self.startImageImport(valid_files)
+        event.acceptProposedAction()
 
     def openFileDialog(self):
         homedir = os.environ.get('HOME', '')
@@ -473,20 +517,34 @@ class ImageUploader(QWidget):
         self.import_worker.finished.connect(self.importFinished)
         self.import_worker.start()
 
+    def updateImageCounter(self):
+        count = len(self.images)
+        self.image_counter_label.setText(f"{count} {'Bild' if count == 1 else 'Bilder'}")
+
+    def importFinished(self):
+        self.import_progress_dialog.close()
+        self.updateImageCounter()  # Update the counter when import is finished
+
     def addImageFromWorker(self, file_path, qimage):
         pixmap = QPixmap.fromImage(qimage)
         frame = QFrame(self.image_container)
         container = QWidget(frame)
         layout = QGridLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Generate a unique ID for this image instance
+        import uuid
+        unique_id = str(uuid.uuid4())
+        
         label = DraggableLabel(container, file_path, self)
+        label.unique_id = unique_id  # Now this will work without warnings
         scaled_pixmap = pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio,
                                       Qt.TransformationMode.SmoothTransformation)
         label.setPixmap(scaled_pixmap)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         remove_button = QPushButton("✖", container)
         remove_button.setFixedSize(16, 16)
-        remove_button.clicked.connect(lambda: self.removeImage(frame, file_path))
+        remove_button.clicked.connect(lambda: self.removeImage(frame, file_path, unique_id))
         remove_button.setStyleSheet("""
             QPushButton {
                 background-color: rgb(102, 102, 102);
@@ -504,12 +562,10 @@ class ImageUploader(QWidget):
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(0, 0, 0, 0)
         frame_layout.addWidget(container)
-        self.images.append((frame, file_path))
+        self.images.append((frame, file_path, unique_id))
         self.rearrangeImages()
         self.updatePdfButtonState()
-
-    def importFinished(self):
-        self.import_progress_dialog.close()
+        self.updateImageCounter()
 
     def reorderImages(self, source_path, target_path):
         source_index = -1
@@ -524,12 +580,20 @@ class ImageUploader(QWidget):
             self.images.insert(target_index, item)
             self.rearrangeImages()
 
-    def removeImage(self, frame, file_path):
+    def removeImage(self, frame, file_path, unique_id=None):
         self.image_layout.removeWidget(frame)
         frame.deleteLater()
-        self.images = [img for img in self.images if img[1] != file_path]
+        
+        if unique_id:
+            # Remove only the specific image instance with this unique ID
+            self.images = [img for img in self.images if img[2] != unique_id]
+        else:
+            # Backward compatibility for any code that might still call without unique_id
+            self.images = [img for img in self.images if img[1] != file_path]
+            
         self.rearrangeImages()
         self.updatePdfButtonState()
+        self.updateImageCounter()
 
     def resetApp(self):
         reply = QMessageBox.question(
@@ -549,6 +613,7 @@ class ImageUploader(QWidget):
             self.images.clear()
             self.empty_label.setVisible(True)
             self.updatePdfButtonState()
+            self.updateImageCounter()
 
     def updatePdfButtonState(self):
         aktennummer_filled = bool(self.aktennummer_input.text().strip())
@@ -563,10 +628,20 @@ class ImageUploader(QWidget):
         aktennummer = self.aktennummer_input.text().strip()
         dokumentenkürzel = self.dokumentenkürzel_input.currentText().strip()
         dokumentenzahl = self.dokumentenzahl_input.text().strip()
+        
+        # Get the starting photo number
+        try:
+            start_photo_number = int(self.start_photo_number.text().strip())
+        except ValueError:
+            start_photo_number = 1  # Default to 1 if invalid
+            
         if not aktennummer or not dokumentenzahl:
             QMessageBox.warning(self, "Fehlende Eingaben", "Bitte füllen Sie alle Eingabefelder aus.")
             return
-        default_folder_name = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl}"
+        if self.dokumentenkürzel_input.currentIndex() == 0:
+            default_folder_name = f"{aktennummer}-{dokumentenzahl}"
+        else:
+            default_folder_name = f"{aktennummer}-{dokumentenkürzel}-{dokumentenzahl}"
         first_image_dir = os.path.dirname(self.images[0][1]) if self.images else ""
         if not first_image_dir:
             first_image_dir = os.path.expanduser("~")
@@ -652,7 +727,8 @@ class ImageUploader(QWidget):
                     return
         os.makedirs(output_folder, exist_ok=True)
         pdf_path = os.path.join(output_folder, f"{base_name}.pdf")
-        image_paths = [p for _, p in self.images]
+        # Update this line to extract file paths from the new image tuple structure
+        image_paths = [p for _, p, _ in self.images]
 
         def is_horizontal(fp):
             try:
@@ -681,7 +757,8 @@ class ImageUploader(QWidget):
         self.pdf_progress_dialog = self.showProgress(total_images, "Creating PDF...")
         briefkopf_path = self.resource_path(os.path.join('resources', 'briefkopf.png'))
         self.pdf_worker = PDFCreationWorker(image_paths, aktennummer, dokumentenkürzel,
-                                             dokumentenzahl, pdf_path, briefkopf_path, output_folder)
+                                             dokumentenzahl, pdf_path, briefkopf_path, 
+                                             output_folder, start_photo_number)
         self.pdf_worker.progressUpdate.connect(lambda val: self.pdf_progress_dialog.setValue(val))
         self.pdf_progress_dialog.canceled.connect(self.pdf_worker.cancel)
         self.pdf_worker.finished.connect(self.pdfFinished)

@@ -8,3 +8,4 @@
 *.spec
 notarization_info.json
 notarization_log.json
+/venv/
