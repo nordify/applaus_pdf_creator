@@ -85,6 +85,7 @@ class PDFCreationWorker(QThread):
         try:
             with Image.open(file_path) as img:
                 img_raw = img
+
                 img = ImageOps.exif_transpose(img)
                 if img.mode in ("RGBA", "LA"):
                     img = img.convert("RGB")
@@ -111,12 +112,15 @@ class PDFCreationWorker(QThread):
                     new_height = int(img.height * scale_factor)
                     img = img.resize((new_width, new_height), Image.LANCZOS)
 
+                file_extension = os.path.splitext(file_path)[1]
+                print(file_extension)
+
                 if self.dokumentenkürzel.startswith("("):
-                    image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
+                    image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
                 else:
-                    image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}.jpg"
+                    image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
                 final_path = os.path.join(self.output_folder, image_filename)
-                img_raw.save(final_path, format="JPEG", quality=85)
+                img_raw.save(final_path, quality=85)
                 return final_path
         except Exception as e:
             print("Fehler bei processImage:", e)
