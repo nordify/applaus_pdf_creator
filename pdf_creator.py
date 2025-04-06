@@ -320,12 +320,6 @@ class DraggableLabel(QLabel):
     def dragLeaveEvent(self, event):
         self.setStyleSheet("border: 2px solid transparent;")
 
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
     def dropEvent(self, event):
         source_path = event.mimeData().text()
         target_path = self.file_path
@@ -574,7 +568,8 @@ class ImageUploader(QWidget):
     def reorderImages(self, source_path, target_path):
         source_index = -1
         target_index = -1
-        for i, (_, path) in enumerate(self.images):
+        # Update the tuple unpacking to handle all three values
+        for i, (_, path, _) in enumerate(self.images):
             if path == source_path:
                 source_index = i
             if path == target_path:
