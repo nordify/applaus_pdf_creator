@@ -113,7 +113,6 @@ class PDFCreationWorker(QThread):
                     img = img.resize((new_width, new_height), Image.LANCZOS)
 
                 file_extension = os.path.splitext(file_path)[1]
-                print(file_extension)
 
                 if self.dokumentenkürzel.startswith("("):
                     image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
