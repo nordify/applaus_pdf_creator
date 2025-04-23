@@ -84,11 +84,14 @@ class PDFCreationWorker(QThread):
     def processImage(self, file_path, image_counter):
         try:
             with Image.open(file_path) as img:
-                img_raw = img
-
-                img = ImageOps.exif_transpose(img)
+                # Apply EXIF orientation to the original image first
+                img_raw = ImageOps.exif_transpose(img.copy())
+                
+                # Create a copy for PDF processing
+                img = img_raw.copy()
                 if img.mode in ("RGBA", "LA"):
                     img = img.convert("RGB")
+                    img_raw = img_raw.convert("RGB")  # Also convert img_raw if needed
 
                 width, height = img.size
                 aspect_ratio = width / height
@@ -119,9 +122,18 @@ class PDFCreationWorker(QThread):
                     image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
                 else:
                     image_filename = f"{self.aktennummer}-{self.dokumentenkürzel}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
+                
+                # Save the properly oriented image to the output folder
                 final_path = os.path.join(self.output_folder, image_filename)
                 img_raw.save(final_path, quality=85)
-                return final_path
+                
+                # Create a temporary file for the processed image to use in the PDF
+                temp_dir = os.path.join(self.output_folder, "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_path = os.path.join(temp_dir, f"temp_{image_counter}{file_extension}")
+                img.save(temp_path, quality=85)
+                
+                return temp_path
         except Exception as e:
             print("Fehler bei processImage:", e)
             return file_path
@@ -275,8 +287,16 @@ class PDFCreationWorker(QThread):
 
             if not self._isCanceled:
                 pdf.output(self.save_path)
+                
+                # Clean up temporary files
+                temp_dir = os.path.join(self.output_folder, "temp")
+                if os.path.exists(temp_dir):
+                    try:
+                        shutil.rmtree(temp_dir)
+                    except Exception as e:
+                        print(f"Error cleaning up temp files: {e}")
 
-            self.finished.emit(self.save_path)
+                self.finished.emit(self.save_path)
 
         except Exception as e:
             self.errorOccurred.emit(str(e))
@@ -606,13 +626,13 @@ class ImageUploader(QWidget):
             self.aktennummer_input.clear()
             self.dokumentenkürzel_input.setCurrentIndex(0)
             self.dokumentenzahl_input.clear()
-            for frame, _ in self.images:
+            for frame, _, _ in self.images:  # Updated to unpack 3 values
                 self.image_layout.removeWidget(frame)
                 frame.deleteLater()
             self.images.clear()
             self.empty_label.setVisible(True)
             self.updatePdfButtonState()
-            self.updateImageCounter()
+            self.updateImageCounter()  # Update the counter when resetting
 
     def updatePdfButtonState(self):
         aktennummer_filled = bool(self.aktennummer_input.text().strip())
