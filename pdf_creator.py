@@ -139,6 +139,11 @@ class PDFCreationWorker(QThread):
 
     def run(self):
         try:
+            # Check if there are no images to process
+            if not self.image_paths or self._isCanceled:
+                self.finished.emit(self.save_path)
+                return
+                
             pdf = FPDF(orientation="P", unit="mm", format="A4")
             pdf.set_auto_page_break(False)
             page_width = 210
