@@ -116,7 +116,6 @@ class PDFCreationWorker(QThread):
                     img = img.resize((new_width, new_height), Image.LANCZOS)
 
                 file_extension = os.path.splitext(file_path)[1]
-                print(file_extension)
 
                 if self.dokumentenkürzel.startswith("("):
                     image_filename = f"{self.aktennummer}-{self.dokumentenzahl} Foto Nr. {image_counter}{file_extension}"
@@ -411,7 +410,7 @@ class ImageUploader(QWidget):
         counter_layout = QHBoxLayout()
         counter_layout.addStretch()
         self.image_counter_label = QLabel("0 Bilder", self)
-        self.image_counter_label.setStyleSheet("color: rgba(255, 255, 255, 0.7); font-weight: bold;")
+        self.image_counter_label.setStyleSheet("color: #888888; font-weight: bold;")
         counter_layout.addWidget(self.image_counter_label)
         image_container_layout.addLayout(counter_layout)
         
@@ -428,7 +427,7 @@ class ImageUploader(QWidget):
         layout.addLayout(image_container_layout)
 
         self.empty_label = QLabel("Importiere Fotos oder ziehe sie hierhin", self.image_container)
-        self.empty_label.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
+        self.empty_label.setStyleSheet("color: #888888;")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_layout = QVBoxLayout()
         self.empty_layout.addStretch()
