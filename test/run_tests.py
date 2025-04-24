@@ -17,12 +17,13 @@ def run_tests():
     # Create a test suite
     test_suite = unittest.TestSuite()
     
-    # Add test cases
-    test_suite.addTest(unittest.makeSuite(TestImageProcessing))
-    test_suite.addTest(unittest.makeSuite(TestPDFCreation))
-    test_suite.addTest(unittest.makeSuite(TestUI))
-    test_suite.addTest(unittest.makeSuite(TestIntegration))
-    test_suite.addTest(unittest.makeSuite(TestFunctional))
+    # Add test cases using the loader instead of makeSuite
+    loader = unittest.TestLoader()
+    test_suite.addTests(loader.loadTestsFromTestCase(TestImageProcessing))
+    test_suite.addTests(loader.loadTestsFromTestCase(TestPDFCreation))
+    test_suite.addTests(loader.loadTestsFromTestCase(TestUI))
+    test_suite.addTests(loader.loadTestsFromTestCase(TestIntegration))
+    test_suite.addTests(loader.loadTestsFromTestCase(TestFunctional))
     
     # Run the tests
     runner = unittest.TextTestRunner(verbosity=2)
@@ -31,6 +32,10 @@ def run_tests():
     return result.wasSuccessful()
 
 if __name__ == "__main__":
+    # Ensure we're using Python 3.13
+    if sys.version_info.major != 3 or sys.version_info.minor != 13:
+        print(f"Warning: Tests are designed for Python 3.13, but you're using Python {sys.version_info.major}.{sys.version_info.minor}")
+    
     success = run_tests()
     
     # Force garbage collection to clean up Qt objects

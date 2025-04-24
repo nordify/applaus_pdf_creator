@@ -4,5 +4,3 @@ PyQt6
 fpdf
 Pillow
 PyPDF2
-unittest
-tempfile
